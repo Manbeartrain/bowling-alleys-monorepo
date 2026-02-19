@@ -1,0 +1,658 @@
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useLocation, useRoute, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { MapPin, Search, Plus, ArrowLeft, Mail } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import VenueCard from "@/components/VenueCard";
+import StateSelector from "@/components/StateSelector";
+import CityMap from "@/components/CityMap";
+import { getCityHubUrl, hasCityHub } from "@/lib/cityHubMap";
+import {
+  getBarStates,
+  getBarVenuesByState,
+  Venue,
+} from "@/lib/firestore";
+import { trackEvent } from "@/lib/analytics";
+
+// Helper function to create URL-friendly slug
+const createSlug = (text: string) => {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "") // Remove special characters
+    .replace(/\s+/g, "-") // Replace spaces with hyphens
+    .replace(/-+/g, "-") // Replace multiple hyphens with single
+    .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+};
+
+// State abbreviation to full name mapping
+const stateNameMap: Record<string, string> = {
+  co: "Colorado",
+  colorado: "Colorado",
+  ca: "California",
+  california: "California",
+  tx: "Texas",
+  texas: "Texas",
+  ny: "New York",
+  "new york": "New York",
+  "new-york": "New York",
+  fl: "Florida",
+  florida: "Florida",
+  ga: "Georgia",
+  georgia: "Georgia",
+  il: "Illinois",
+  illinois: "Illinois",
+  in: "Indiana",
+  indiana: "Indiana",
+  ky: "Kentucky",
+  kentucky: "Kentucky",
+  sc: "South Carolina",
+  "south carolina": "South Carolina",
+  "south-carolina": "South Carolina",
+};
+
+// Helper function to format display name (reverse of createSlug)
+const formatDisplayName = (slug: string) => {
+  const normalized = slug.toLowerCase();
+  // Check if we have a specific mapping for this state
+  if (stateNameMap[normalized]) {
+    return stateNameMap[normalized];
+  }
+
+  // Fall back to default title case formatting
+  return slug
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
+export default function BowlingBar() {
+  // Extract route parameters
+  const [cityMatch, cityParams] = useRoute("/bowling-bar/:state/:city");
+  const [stateMatch, stateParams] = useRoute("/bowling-bar/:state");
+  const [baseMatch] = useRoute("/bowling-bar");
+  const [location, setLocation] = useLocation();
+
+  // Determine current navigation state from route params
+  const selectedState = cityMatch
+    ? decodeURIComponent(cityParams!.state)
+    : stateMatch
+      ? decodeURIComponent(stateParams!.state)
+      : null;
+  const selectedCity = cityMatch ? decodeURIComponent(cityParams!.city) : null;
+
+  // Convert display names back from URL slugs
+  const displayState = selectedState?.toUpperCase();
+  const displayCity = selectedCity ? formatDisplayName(selectedCity) : null;
+
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Set page title and meta description with bar focus
+  useEffect(() => {
+    let title, description;
+
+    if (displayCity && displayState) {
+      title = `Bowling Alleys with Bars in ${displayCity}, ${displayState} | Drinks & Entertainment`;
+      description = `Discover bowling alleys with bars in ${displayCity}, ${displayState}. Find bowling centers with full bars, craft beer, cocktails, and great drinks in your area.`;
+    } else if (displayState) {
+      title = `Bowling Alleys with Bars in ${displayState} | Drinks & Entertainment by City`;
+      description = `Browse bowling alleys with bars across ${displayState}. Find bowling centers with full bars, craft beer, cocktails, and great drinks in cities throughout the state.`;
+    } else {
+      title = "Bowling Alleys with Bars Near Me | Find Drinks & Entertainment by State";
+      description =
+        "Discover bowling alleys with bars across the United States. Find bowling centers with full bars, craft beer, cocktails, and great drinks in your state and city.";
+    }
+
+    document.title = title;
+
+    // Update meta description
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription) {
+      metaDescription.setAttribute("content", description);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "description";
+      meta.content = description;
+      document.head.appendChild(meta);
+    }
+
+    // Add structured data for bar bowling organization
+    const structuredData = {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: title,
+      description: description,
+      url: window.location.href,
+      breadcrumb: {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Home",
+            item: window.location.origin,
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: "Bowling Bars",
+            item: `${window.location.origin}/bowling-bar`,
+          },
+        ]
+          .concat(
+            displayState
+              ? [
+                  {
+                    "@type": "ListItem",
+                    position: 3,
+                    name: `${displayState} Bowling Bars`,
+                    item: `${window.location.origin}/bowling-bar/${selectedState}`,
+                  },
+                ]
+              : [],
+          )
+          .concat(
+            displayCity && displayState
+              ? [
+                  {
+                    "@type": "ListItem",
+                    position: 4,
+                    name: `${displayCity} Bowling Bars`,
+                    item: `${window.location.origin}/bowling-bar/${selectedState}/${selectedCity}`,
+                  },
+                ]
+              : [],
+          ),
+      },
+      mainEntity: {
+        "@type": "ItemList",
+        name:
+          displayCity && displayState
+            ? `Bowling Bars in ${displayCity}, ${displayState}`
+            : displayState
+              ? `Bowling Bars in ${displayState}`
+              : "Bowling Bars by State",
+        description: description,
+      },
+    };
+
+    // Remove existing structured data for bar bowling
+    const existingScript = document.querySelector(
+      'script[type="application/ld+json"][data-bar]',
+    );
+    if (existingScript) {
+      existingScript.remove();
+    }
+
+    // Add new structured data
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.setAttribute("data-bar", "true");
+    script.textContent = JSON.stringify(structuredData);
+    document.head.appendChild(script);
+  }, [displayState, displayCity, selectedState, selectedCity]);
+
+  // Query for states list (only states with bar bowling)
+  const { data: states = [], isLoading: statesLoading } = useQuery({
+    queryKey: ["/api/bar-states"],
+    queryFn: getBarStates,
+  });
+
+  // Query for venues in selected state (only venues with bar)
+  const { data: stateVenues = [], isLoading: venuesLoading } = useQuery({
+    queryKey: ["/api/bar-venues-by-state", selectedState],
+    queryFn: () =>
+      selectedState
+        ? getBarVenuesByState(displayState!)
+        : Promise.resolve([]),
+    enabled: !!selectedState,
+  });
+
+  // Group venues by city when a state is selected
+  const venuesByCity = useMemo(() => {
+    if (!selectedState || !stateVenues.length) return {};
+
+    const grouped: Record<string, Venue[]> = {};
+
+    stateVenues.forEach((venue) => {
+      const city = venue.city || "Unknown City";
+      if (!grouped[city]) {
+        grouped[city] = [];
+      }
+      grouped[city].push(venue);
+    });
+
+    // Sort venues within each city by rating
+    Object.keys(grouped).forEach((city) => {
+      grouped[city].sort((a, b) => b.avgRating - a.avgRating);
+    });
+
+    return grouped;
+  }, [selectedState, stateVenues]);
+
+  // Get cities for state-level view (when no specific city selected)
+  const citiesInState = useMemo(() => {
+    if (!selectedState || selectedCity) return [];
+
+    return Object.entries(venuesByCity)
+      .map(([city, venues]) => ({
+        name: city,
+        venueCount: venues.length,
+        slug: createSlug(city),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [venuesByCity, selectedState, selectedCity]);
+
+  // Filter venues by search term for city-level view and include nearby to fill up to 20
+  const filteredVenuesByCity = useMemo(() => {
+    if (!selectedCity || !displayCity) return {};
+
+    const cityVenues = venuesByCity[displayCity] || [];
+    const result: Record<string, Venue[]> = { [displayCity]: cityVenues };
+
+    // If the city has fewer than 20 venues, add nearby venues from other cities
+    if (cityVenues.length < 20) {
+      const neededVenues = 20 - cityVenues.length;
+      const nearbyVenues: Venue[] = [];
+
+      // Get venues from other cities in the same state
+      Object.entries(venuesByCity).forEach(([city, venues]) => {
+        if (city !== displayCity) {
+          nearbyVenues.push(...venues);
+        }
+      });
+
+      // Sort by rating and take what we need
+      nearbyVenues.sort((a, b) => b.avgRating - a.avgRating);
+      const additionalVenues = nearbyVenues.slice(0, neededVenues);
+
+      // Group additional venues by their city
+      const additionalByCity: Record<string, Venue[]> = {};
+      additionalVenues.forEach((venue) => {
+        const city = venue.city || "Unknown City";
+        if (!additionalByCity[city]) {
+          additionalByCity[city] = [];
+        }
+        additionalByCity[city].push(venue);
+      });
+
+      // Add to result
+      Object.entries(additionalByCity).forEach(([city, venues]) => {
+        result[city] = venues;
+      });
+    }
+
+    // Apply search filter
+    if (searchTerm) {
+      const searchFiltered: Record<string, Venue[]> = {};
+      const searchLower = searchTerm.toLowerCase();
+
+      Object.entries(result).forEach(([city, venues]) => {
+        const filteredVenues = venues.filter(
+          (venue) =>
+            venue.name.toLowerCase().includes(searchLower) ||
+            venue.address.toLowerCase().includes(searchLower) ||
+            venue.description?.toLowerCase().includes(searchLower),
+        );
+
+        if (filteredVenues.length > 0) {
+          searchFiltered[city] = filteredVenues;
+        }
+      });
+
+      return searchFiltered;
+    }
+
+    return result;
+  }, [venuesByCity, displayCity, searchTerm, selectedCity]);
+
+  const totalVenues = selectedCity
+    ? Object.values(filteredVenuesByCity).reduce((total, venues) => total + venues.length, 0)
+    : stateVenues.length;
+
+  const handleVenueClick = (venueId: string) => {
+    // Store bar bowling back path for the back button
+    sessionStorage.setItem("venueBackPath", location);
+
+    // Find venue details for tracking
+    const venue = stateVenues.find((v) => v.id === venueId);
+    trackEvent("bar_venue_click", "navigation", venue?.name || venueId);
+
+    setLocation(`/venue/${venueId}`);
+  };
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="mb-8">
+        {!selectedState ? (
+          <>
+            <h1
+              className="text-3xl font-bold text-foreground mb-4"
+              data-testid="text-bar-title"
+            >
+              Browse Bowling Alleys with Bars by Location
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Find bowling alleys with full bars, craft beer, cocktails, and great drinks
+              in your area. Select a state to see bar options
+              organized by city.
+            </p>
+          </>
+        ) : displayCity ? (
+          <>
+            {/* Breadcrumb navigation for city view */}
+            <nav className="flex items-center gap-2 mb-4 text-sm">
+              <Link
+                href="/bowling-bar"
+                className="text-primary hover:text-primary/80 underline"
+                data-testid="breadcrumb-home"
+              >
+                All States
+              </Link>
+              <span className="text-muted-foreground">/</span>
+              <Link
+                href={`/bowling-bar/${selectedState}`}
+                className="text-primary hover:text-primary/80 underline"
+                data-testid="breadcrumb-state"
+              >
+                {displayState}
+              </Link>
+              <span className="text-muted-foreground">/</span>
+              <span
+                className="text-foreground font-medium"
+                data-testid="breadcrumb-city"
+              >
+                {displayCity}
+              </span>
+            </nav>
+
+            <div className="flex items-center gap-4 mb-4">
+              <Button
+                variant="ghost"
+                onClick={() => setLocation(`/bowling-bar/${selectedState}`)}
+                className="text-primary hover:text-primary/80"
+                data-testid="button-back-to-state"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to {displayState}
+              </Button>
+            </div>
+
+            <h1
+              className="text-3xl font-bold text-foreground mb-4"
+              data-testid="text-city-bar-title"
+            >
+              Bowling Alleys with Bars in {displayCity}, {displayState}
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              {(() => {
+                const cityVenues = venuesByCity[displayCity!]?.length || 0;
+                const nearbyVenues = totalVenues - cityVenues;
+                if (nearbyVenues > 0) {
+                  return `${cityVenues} ${cityVenues === 1 ? 'alley' : 'alleys'} in ${displayCity} + ${nearbyVenues} nearby with bars`;
+                }
+                return `${totalVenues} bowling ${totalVenues === 1 ? 'alley' : 'alleys'} with bars`;
+              })()}
+            </p>
+          </>
+        ) : (
+          <>
+            {/* Breadcrumb navigation for state view */}
+            <nav className="flex items-center gap-2 mb-4 text-sm">
+              <Link
+                href="/bowling-bar"
+                className="text-primary hover:text-primary/80 underline"
+                data-testid="breadcrumb-bar-home"
+              >
+                All States
+              </Link>
+              <span className="text-muted-foreground">/</span>
+              <span
+                className="text-foreground font-medium"
+                data-testid="breadcrumb-current-state"
+              >
+                {displayState}
+              </span>
+            </nav>
+
+            <div className="flex items-center gap-4 mb-4">
+              <Button
+                variant="ghost"
+                onClick={() => setLocation("/bowling-bar")}
+                className="text-primary hover:text-primary/80"
+                data-testid="button-back-to-bar"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                All States
+              </Button>
+            </div>
+
+            <h1
+              className="text-3xl font-bold text-foreground mb-4"
+              data-testid="text-state-bar-title"
+            >
+              Bowling Alleys with Bars in {displayState}
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Select a city to see bar options. {stateVenues.length}{" "}
+              bowling {stateVenues.length === 1 ? "venue" : "venues"} across{" "}
+              {citiesInState.length}{" "}
+              {citiesInState.length === 1 ? "city" : "cities"}!
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* City Hub Guide Banner */}
+      {selectedCity && displayCity && getCityHubUrl(displayCity) && (
+        <Alert className="mb-6 bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+          <AlertDescription className="text-sm">
+            Want to find the best bowling alleys in {displayCity}?{" "}
+            <Link
+              to={getCityHubUrl(displayCity)!}
+              className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline"
+              data-testid="link-city-guide-banner"
+            >
+              Check the city guide here
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* City Map - Only show when viewing a specific city */}
+      {selectedCity && displayCity && Object.keys(filteredVenuesByCity).length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4">Map View</h2>
+          <CityMap
+            venues={Object.values(filteredVenuesByCity).flat()}
+            onVenueClick={handleVenueClick}
+          />
+        </div>
+      )}
+
+      {/* Search (only show when city is selected) */}
+      {selectedCity && (
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder="Search bowling alleys with bars in this city..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+              data-testid="input-bar-venue-search"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                data-testid="button-clear-search"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          {searchTerm && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Showing {totalVenues} bowling alleys with bars matching "{searchTerm}
+              " in {displayCity}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!selectedState ? (
+        /* State Selection */
+        <StateSelector
+          states={states}
+          isLoading={statesLoading}
+          onStateClick={(state) => {
+            trackEvent("bar_state_click", "navigation", state);
+            setLocation(`/bowling-bar/${state.replace(/\s+/g, "-")}`);
+          }}
+          icon="🍺"
+          testIdPrefix="bar-state"
+          description="Click to browse bars"
+          emptyStateTitle="No bowling alleys with bars found"
+          emptyStateMessage="We're still building our database of bowling alleys with bar options."
+          emptyStateIcon="🍺"
+        />
+      ) : !selectedCity ? (
+        /* State Level - Show City Cards */
+        venuesLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <div className="p-6">
+                  <div className="h-6 bg-muted rounded w-32 mb-2"></div>
+                  <div className="h-4 bg-muted rounded w-24"></div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : citiesInState.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {citiesInState.map((city) => (
+              <Card
+                key={city.slug}
+                className="hover-elevate cursor-pointer transition-transform duration-200"
+                onClick={() => {
+                  trackEvent(
+                    "bar_city_click",
+                    "navigation",
+                    `${city.name}, ${displayState}`,
+                  );
+                  setLocation(`/bowling-bar/${selectedState}/${city.slug}`);
+                }}
+                data-testid={`card-bar-city-${city.slug}`}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold text-lg">{city.name}</h3>
+                        {getCityHubUrl(city.name) && (
+                          <Link
+                            to={getCityHubUrl(city.name)!}
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={`badge-city-hub-${city.slug}`}
+                          >
+                            <Badge
+                              variant="secondary"
+                              className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs cursor-pointer hover-elevate"
+                            >
+                              📍 City Guide
+                            </Badge>
+                          </Link>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Click to browse bars
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {city.venueCount}{" "}
+                        {city.venueCount === 1 ? "venue" : "venues"}
+                      </p>
+                    </div>
+                    <div className="text-2xl">🍺</div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🍺</div>
+            <h3 className="text-lg font-semibold mb-2">
+              No cities with bowling bars found
+            </h3>
+            <p className="text-muted-foreground">
+              No bowling alleys with bars found in {displayState}.
+            </p>
+          </div>
+        )
+      ) : /* City Level - Show Venue Cards */
+      venuesLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <div className="h-48 bg-muted rounded-t-lg"></div>
+              <div className="p-4 space-y-2">
+                <div className="h-6 bg-muted rounded w-3/4"></div>
+                <div className="h-4 bg-muted rounded w-1/2"></div>
+                <div className="h-4 bg-muted rounded w-full"></div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : Object.keys(filteredVenuesByCity).length > 0 ? (
+        <div className="space-y-8">
+          {Object.entries(filteredVenuesByCity)
+            .sort(([cityA], [cityB]) => {
+              if (cityA === displayCity) return -1;
+              if (cityB === displayCity) return 1;
+              return cityA.localeCompare(cityB);
+            })
+            .map(([city, venues]) => (
+              <div key={city}>
+                <h2 className="text-2xl font-semibold mb-4">
+                  {city === displayCity ? city : `${city} (Nearby)`}
+                </h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {venues.map((venue) => (
+                    <VenueCard
+                      key={venue.id}
+                      venue={venue}
+                      onViewDetails={() => handleVenueClick(venue.id)}
+                      showRating={true}
+                      showPrice={false}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <div className="text-6xl mb-4">🍺</div>
+          <h3 className="text-lg font-semibold mb-2">
+            No bowling alleys with bars found
+          </h3>
+          <p className="text-muted-foreground">
+            {searchTerm
+              ? `No bowling alleys with bars found matching "${searchTerm}" in ${displayCity}, ${displayState}.`
+              : `No bowling alleys with bars found in ${displayCity}, ${displayState}.`}
+          </p>
+        </div>
+      )}
+
+    </div>
+  );
+}

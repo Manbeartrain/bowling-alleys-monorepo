@@ -1,0 +1,185 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /venues/{venueId} {
+    allow read: if true;
+    // Only admins can delete venues
+    allow delete: if isAdmin();
+    // Admins can create venues with any fields
+    allow create: if isAdmin();
+    // Marketing contributors can create venues but cannot set admin-only fields
+    allow create: if isMarketingContributor()
+      && !('isTopAlley' in request.resource.data && request.resource.data.isTopAlley == true)
+      && !('isFoundingPartner' in request.resource.data && request.resource.data.isFoundingPartner == true)
+      && !('isSponsor' in request.resource.data && request.resource.data.isSponsor == true);
+    // Allow admins to update any field
+    allow update: if isAdmin();
+    
+    // Allow marketing contributors to update venue fields
+    // They can update all fields EXCEPT admin-only feature flags
+    allow update: if isMarketingContributor()
+      && !request.resource.data.diff(resource.data).affectedKeys()
+         .hasAny(['isTopAlley', 'isFoundingPartner', 'isSponsor']);
+
+    // Allow venue owners to update their venue information
+    allow update: if request.auth != null 
+      && resource.data.ownerId == request.auth.uid
+      && request.resource.data.diff(resource.data).affectedKeys()
+         .hasOnly([
+           'name', 'lanes', 'description', 'amenities', 
+           'address', 'city', 'state', 'zipCode',
+           'phone', 'email', 'website', 
+           'facebookUrl', 'instagramUrl', 'twitterUrl', 'tikTokUrl',
+           'location', 'imageUrls', 'weekdayText',
+           'pricing', 'pricingDetails', 'updatedAt'
+         ]);
+
+    // Allow authenticated users to update only rating-related fields when creating/updating reviews
+    allow update: if request.auth != null 
+      && request.resource.data.diff(resource.data).affectedKeys()
+         .hasOnly(['avgRating', 'reviewCount', 'updatedAt']);
+
+    // Allow authenticated users to submit accuracy votes
+    allow update: if request.auth != null 
+      && request.resource.data.diff(resource.data).affectedKeys()
+         .hasOnly(['accuracyReports', 'accuracyScore', 'accuracyVoteCount', 'updatedAt'])
+      && request.resource.data.accuracyReports[request.auth.uid] != null;
+
+    // Reviews subcollection
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid 
+        && request.resource.data.rating >= 1 
+        && request.resource.data.rating <= 5
+        && !hasExistingReview(venueId, request.auth.uid);
+      allow update, delete: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // Games subcollection - for score submissions and leaderboards
+    match /games/{gameId} {
+      // Anyone can read approved games
+      allow read: if resource.data.status == 'approved';
+      
+      // Authenticated users can create games
+      allow create: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.score >= 0
+        && request.resource.data.score <= 300
+        && request.resource.data.status == 'pending';
+      
+      // Venue owners can read all games (including pending) and update status
+      allow read: if request.auth != null 
+        && get(/databases/$(database)/documents/venues/$(venueId)).data.ownerId == request.auth.uid;
+      
+      // Venue owners can approve or reject games
+      allow update: if request.auth != null 
+        && get(/databases/$(database)/documents/venues/$(venueId)).data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['approved', 'rejected'];
+      
+      // Venue owners can delete games (reject)
+      allow delete: if request.auth != null 
+        && get(/databases/$(database)/documents/venues/$(venueId)).data.ownerId == request.auth.uid;
+    }
+  }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+    
+      // Saved alleys subcollection - users can only manage their own saved alleys
+      match /savedAlleys/{venueId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Reports - Updated to allow public read access to all subcollections
+    match /reports/{reportDate} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      // USA subcollection
+      match /usa/{document} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+      
+      // States subcollection
+      match /states/{stateId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+      
+      // Cities subcollection
+      match /cities/{cityId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+    
+    // Suggestions Collection
+    match /suggestions/{suggestionsId} {
+      allow read: if true; 
+        allow write: if true; 
+    }
+    
+    // Contacts Collection
+    match /contacts/{contactsId} {
+      allow read: if true; 
+      allow write, delete, update: if isAdmin();
+    }
+    
+    // Hubs Collection
+    match /hubs/{hubId} {
+      // Public can read hubs (for website pages)
+      allow read: if true;
+
+      // Only signed-in users can write/update/delete
+      allow create, update, delete: if request.auth != null;
+
+      // Optional: restrict writes to admin users only
+      // (add a custom claim like request.auth.token.admin == true)
+      // allow create, update, delete: if request.auth.token.admin == true;
+
+      // Subcollection: images (each hub has its own images)
+      match /images/{imageId} {
+        allow read: if true;
+        allow create, update, delete: if request.auth != null;
+        // or stricter:
+        // allow create, update, delete: if request.auth.token.admin == true;
+      }
+    }
+    
+    // Amenities collection (standard amenity tags)
+    match /amenities/{amenityId} {
+      // Anyone can read amenity tags (for venue forms)
+      allow read: if true;
+      // Only full admins can create/update/delete amenity tags
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // App config (public read, admin write)
+    match /config/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Helper functions
+    function isAdmin() {
+      return request.auth != null && 
+        request.auth.uid in get(/databases/$(database)/documents/config/app).data.admins;
+    }
+    
+    function isMarketingContributor() {
+      return request.auth != null && 
+        request.auth.uid in get(/databases/$(database)/documents/config/app).data.marketing_contributors;
+    }
+    
+    function hasExistingReview(venueId, userId) {
+      return exists(/databases/$(database)/documents/venues/$(venueId)/reviews/$(userId));
+    }
+  }
+}
