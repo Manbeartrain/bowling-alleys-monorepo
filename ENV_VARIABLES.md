@@ -26,13 +26,15 @@ GOOGLE_APPLICATION_CREDENTIALS=packages/api/config/firebase-service-account.json
 
 # Firebase Project ID (required)
 FIREBASE_PROJECT_ID=bowling-alleys-io
-# OR (legacy support)
+# OR
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=bowling-alleys-io
-VITE_FIREBASE_PROJECT_ID=bowling-alleys-io
 
 # Optional: Firebase Client Config (for sitemap generation)
-VITE_FIREBASE_API_KEY=your-api-key
-VITE_FIREBASE_APP_ID=your-app-id
+NEXT_PUBLIC_FIREBASE_API_KEY=your-api-key
+NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
+
+# Email (use production Resend vs dev)
+USE_PRODUCTION_EMAIL=false
 ```
 
 ### Firebase Admin SDK Setup
@@ -111,6 +113,7 @@ NEXT_PUBLIC_SITE_URL=https://bowlingalleys.io
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes* | Path to Firebase service account JSON file |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | Yes* | Firebase service account JSON as string (alternative to file) |
 | `FIREBASE_PROJECT_ID` | Yes | Firebase project ID |
+| `USE_PRODUCTION_EMAIL` | No | Use production Resend for emails (`true` or `false`) |
 | `NODE_ENV` | No | Node environment (`development` or `production`) |
 
 *Either `GOOGLE_APPLICATION_CREDENTIALS` or `FIREBASE_SERVICE_ACCOUNT_KEY` is required.

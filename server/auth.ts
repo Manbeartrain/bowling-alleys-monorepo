@@ -4,10 +4,9 @@ import admin from "firebase-admin";
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
   try {
-    // Try multiple env var names for project ID (supporting both old Vite and new Next.js naming)
+    // Try multiple env var names for project ID
     const projectId = process.env.FIREBASE_PROJECT_ID 
       || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID 
-      || process.env.VITE_FIREBASE_PROJECT_ID 
       || 'bowling-alleys-io';
     
     // Initialize with environment variables or service account

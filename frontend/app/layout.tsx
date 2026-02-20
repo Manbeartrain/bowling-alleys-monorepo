@@ -17,7 +17,7 @@ const publicSans = Public_Sans({
 });
 
 const csGordon = localFont({
-  src: "../../attached_assets/CsGordon-YzRaL_1767047207927.otf",
+  src: "../public/attached_assets/CsGordon-YzRaL_1767047207927.otf",
   variable: "--font-title",
   display: "swap",
 });

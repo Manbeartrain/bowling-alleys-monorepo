@@ -15,7 +15,7 @@ export const useAnalytics = () => {
   const lastSentRef = useRef<{ path: string; title: string }>({ path: '', title: '' });
   
   useEffect(() => {
-    const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
+    const measurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
     if (!measurementId || typeof window === 'undefined' || !window.gtag) return;
     
     // Function to check and send page view

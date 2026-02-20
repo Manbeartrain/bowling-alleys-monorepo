@@ -368,12 +368,12 @@ async function getOwnerProfilesForSitemap() {
     );
 
     const firebaseConfig = {
-      apiKey: process.env.VITE_FIREBASE_API_KEY,
-      authDomain: process.env.VITE_FIREBASE_PROJECT_ID + ".firebaseapp.com",
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.VITE_FIREBASE_PROJECT_ID + ".appspot.com",
-      messagingSenderId: process.env.VITE_FIREBASE_APP_ID,
-      appId: process.env.VITE_FIREBASE_APP_ID,
+      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+      authDomain: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID + ".firebaseapp.com",
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID + ".appspot.com",
+      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
     };
 
     const app = initializeApp(firebaseConfig);
@@ -717,12 +717,12 @@ async function getPricingStatesForSitemap(): Promise<string[]> {
     );
 
     const firebaseConfig = {
-      apiKey: process.env.VITE_FIREBASE_API_KEY,
-      authDomain: process.env.VITE_FIREBASE_PROJECT_ID + ".firebaseapp.com",
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.VITE_FIREBASE_PROJECT_ID + ".appspot.com",
-      messagingSenderId: process.env.VITE_FIREBASE_APP_ID,
-      appId: process.env.VITE_FIREBASE_APP_ID,
+      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+      authDomain: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID + ".firebaseapp.com",
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID + ".appspot.com",
+      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
     };
 
     const app = initializeApp(
@@ -785,12 +785,12 @@ async function getPricingLocationsForSitemap(): Promise<
     );
 
     const firebaseConfig = {
-      apiKey: process.env.VITE_FIREBASE_API_KEY,
-      authDomain: process.env.VITE_FIREBASE_PROJECT_ID + ".firebaseapp.com",
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.VITE_FIREBASE_PROJECT_ID + ".appspot.com",
-      messagingSenderId: process.env.VITE_FIREBASE_APP_ID,
-      appId: process.env.VITE_FIREBASE_APP_ID,
+      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+      authDomain: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID + ".firebaseapp.com",
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID + ".appspot.com",
+      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
     };
 
     const app = initializeApp(
